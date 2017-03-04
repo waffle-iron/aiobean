@@ -10,7 +10,23 @@ For example::
     RESERVED 10 2\r\nab\r\n
 
 """
-from .exc import BeanstalkException
+from aiobean.exc import BeanstalkException
+from functools import partial
+try:
+    from yaml import load as load_yaml
+except ImportError:
+    PYYAML = False
+    # without yaml, we just decode it
+
+    def load_yaml(body, **kwargs):
+        return body.decode()
+else:  # try to use libyaml
+    PYYAML = True
+    try:
+        from yaml import CLoader as Loader
+    except ImportError:
+        from yaml import Loader
+load_yaml = partial(load_yaml, Loader=Loader)
 
 
 class ProtocolException(BeanstalkException):
@@ -29,16 +45,20 @@ class UnexpectedResponse(ProtocolException):
     pass
 
 
-def parse_int(headers, body):
+def _parse_int(headers, body=None):
     return int(headers[0])
 
 
-def parse_job(headers, body):
+def _parse_body(headers, body=None):
     return body
 
 
-def parse_str(headers, body):
-    return headers[0]
+def _parse_str(headers, body=None):
+    return headers[0].decode()
+
+
+def _parse_yml(headers, body=None):
+    return load_yaml(body)
 
 
 CRLF = '\r\n'
@@ -48,17 +68,17 @@ PROTOCOL = {
     'put': (
         b'INSERTED',
         {b'BURIED', b'EXPECTED_CLRF', b'JOB_TOO_BIG', b'DRAINING'},
-        parse_int,
+        _parse_int,
     ),
     'reserve': (
         b'RESERVED',
         {b'DEADLINE_SOON'},
-        parse_job,
+        _parse_body,
     ),
     'peek': (
         b'FOUND',
         {b'NOT_FOUND'},
-        parse_job,
+        _parse_body,
     )
 }
 RESP_WITH_BODY = {b'RESERVED', b'FOUND', b'OK'}
@@ -66,7 +86,7 @@ RESP_WITH_BODY = {b'RESERVED', b'FOUND', b'OK'}
 
 def encode_command(command, *args, body=None):
     if command not in PROTOCOL:
-        raise InvalidCommand('invalid command')
+        raise InvalidCommand
     if args:
         command += ' ' + ' '.join(str(arg) for arg in args)
     yield (command + CRLF).encode()

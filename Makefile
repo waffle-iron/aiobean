@@ -2,7 +2,7 @@ clean:
 	-rm -r aiobean.egg-info
 
 aiobean.egg-info:
-	pip install -Ue .
+	pip install -Ue .[yml]
 
 devel:
 	pip install -U pip

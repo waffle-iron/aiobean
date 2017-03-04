@@ -1,6 +1,7 @@
 from aiobean.protocol import (
-    CommandFailed, InvalidCommand, UnexpectedResponse,
+    CommandFailed, InvalidCommand, PYYAML, UnexpectedResponse,
     encode_command, handle_head, handle_response,
+    _parse_body, _parse_int, _parse_str, _parse_yml,
 )
 import pytest
 
@@ -54,3 +55,26 @@ def test_handle_reponse():
     # unexpected errors
     with pytest.raises(UnexpectedResponse):
         handle_response('put', b'OUT_OF_MEMORY', [], None)
+
+
+# test parsers
+_yml_body = b'''
+---
+hostname: huston
+uptime: 10
+'''
+
+
+@pytest.mark.parametrize('parser,args,expected', [
+    [_parse_int, ([b'10'],), 10],
+    [_parse_str, ([b'default'],), 'default'],
+    [_parse_body, ([b'200', b'4'], b'body'), b'body'],
+    [_parse_yml, ([], _yml_body), dict(hostname='huston', uptime=10)]
+])
+def test_parser(parser, args, expected):
+    assert parser(*args) == expected
+
+
+@pytest.mark.skipif(PYYAML, reason='only run when pyyaml is not available')
+def test_parse_yml_without_pyyaml():
+    assert _parse_yml([], _yml_body) == _yml_body.decode()

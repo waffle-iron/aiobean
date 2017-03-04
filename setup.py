@@ -14,6 +14,11 @@ setup(
     package_dir={'aiobean': 'aiobean'},
     include_package_data=True,
     install_requires=[],
+    extras_require={
+        'yml': [
+            'PyYAML',
+        ]
+    },
     license="BSD license",
     zip_safe=False,
     keywords='aiobean',
