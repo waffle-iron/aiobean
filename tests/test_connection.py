@@ -13,6 +13,12 @@ def conn_factory(server, event_loop):
 
 async def test_put(conn_factory):
     conn = await conn_factory()
-    fut = conn._execute('put', 10, 0, 10, 2, body=b'hi')
+    fut = conn.execute('put', 10, 0, 10, 2, body=b'hi')
     jid = await fut
     assert isinstance(jid, int)
+
+
+async def test_delete(conn_factory):
+    conn = await conn_factory()
+    id = await conn.put(b'hi')
+    await conn.delete(id)

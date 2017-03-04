@@ -1,6 +1,8 @@
 import asyncio
 from collections import deque
-from aiobean.protocol import encode_command, handle_head, handle_response
+from aiobean.protocol import (
+    CommandsMixin, encode_command, handle_head, handle_response
+)
 
 
 async def create_connection(host, port, loop=None):
@@ -10,7 +12,7 @@ async def create_connection(host, port, loop=None):
     return Connection(reader, writer, loop)
 
 
-class Connection:
+class Connection(CommandsMixin):
 
     def __init__(self, reader, writer, loop):
         self._reader = reader
@@ -20,8 +22,11 @@ class Connection:
         self._read_task = asyncio.ensure_future(
             self._read_loop(), loop=loop)
 
-    def _execute(self, command, *args, body=None):
-        waiter = self._loop.create_future()
+    def create_future(self):
+        return self._loop.create_future()
+
+    def execute(self, command, *args, body=None):
+        waiter = self.create_future()
         self._queue.append((command, waiter))
         for part in encode_command(command, *args, body=body):
             self._writer.write(part)

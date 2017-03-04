@@ -68,7 +68,7 @@ uptime: 10
 @pytest.mark.parametrize('parser,args,expected', [
     [_parse_int, ([b'10'],), 10],
     [_parse_str, ([b'default'],), 'default'],
-    [_parse_body, ([b'200', b'4'], b'body'), b'body'],
+    [_parse_body, ([b'10', b'4'], b'body'), (10, b'body')],
     [_parse_yml, ([], _yml_body), dict(hostname='huston', uptime=10)]
 ])
 def test_parser(parser, args, expected):
