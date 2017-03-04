@@ -13,6 +13,6 @@ def conn_factory(server, event_loop):
 
 async def test_put(conn_factory):
     conn = await conn_factory()
-    fut = conn.write(b'put 10 0 10 2\r\n', b'hi\r\n')
+    fut = conn._execute('put', 10, 0, 10, 2, body=b'hi')
     jid = await fut
     assert isinstance(jid, int)
