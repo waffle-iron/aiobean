@@ -74,86 +74,83 @@ B_CRLF = b'\r\n'
 _EMPTY = set()
 
 
-_job_type = typing.Tuple[int, bytes]
+# return types
+_a_int = typing.Awaitable[int]
+_a_str = typing.Awaitable[str]
+_a_job = typing.Awaitable[typing.Tuple[int, bytes]]
+_a_dict = typing.Awaitable[dict]
+_a_list_str = typing.Awaitable[typing.List[str]]
 
 
 class CommandsMixin:
+    DEFAULT_PRI = 2**32
+    DEFAULT_TTR = 300
 
-    def put(self, body, pri: int=2**32, delay: int=0, ttr: int=300) -> int:
+    def put(self, body, pri: int=DEFAULT_PRI, delay: int=0,
+            ttr: int=DEFAULT_TTR) -> _a_int:
         return self.execute('put', pri, delay, ttr, len(body), body=body)
 
-    def use(self, tube: str) -> str:
+    def use(self, tube: str) -> _a_str:
         return self.execute('use', tube)
 
-    def reserve(self, timeout=None) -> bytes:
+    def reserve(self, timeout: int=None) -> _a_job:
         if timeout is None:
             return self.execute('reserve')
-        return self.execute('reserve-with-timeout')
+        else:
+            return self.execute('reserve-with-timeout', timeout)
 
     def delete(self, id: int) -> None:
         return self.execute('delete', id)
 
-    def release(self, id: int) -> None:
-        return self.execute('release', id)
+    def release(self, id: int, pri: int=DEFAULT_PRI, delay: int=0) -> None:
+        return self.execute('release', id, pri, delay)
 
-    def bury(self, id: int) -> None:
-        return self.execute('bury', id)
+    def bury(self, id: int, pri: int=DEFAULT_PRI) -> None:
+        return self.execute('bury', id, pri)
 
     def touch(self, id: int) -> None:
         return self.execute('touch', id)
 
-    def watch(self, tube: str) -> int:
+    def watch(self, tube: str) -> _a_int:
         return self.execute('watch', tube)
 
-    def ignore(self, tube: str) -> int:
+    def ignore(self, tube: str) -> _a_int:
         return self.execute('ignore', tube)
 
-    def _peek(self, command, *args):
-        # return None if no job can be peeked
-        fut = self.create_future()
+    def peek(self, id: int) -> _a_job:
+        return self.execute('peek', id)
 
-        async def _peek_command():
-            try:
-                fut.set_result(await self.execute(command, *args))
-            except CommandFailed:
-                fut.set_result(None)
+    def peek_ready(self) -> _a_job:
+        return self.execute('peek-ready')
 
-        return fut
+    def peek_delayed(self) -> _a_job:
+        return self.execute('peek-delayed')
 
-    def peek(self, id: int) -> _job_type:
-        return self._peek('peek', id)
+    def peek_buried(self) -> _a_job:
+        return self.execute('peek-buried')
 
-    def peek_ready(self) -> _job_type:
-        return self._peek('peek-ready')
-
-    def peek_delayed(self) -> _job_type:
-        return self._peek('peek-delayed')
-
-    def peek_buried(self) -> _job_type:
-        return self._peek('peek-buried')
-
-    def kick(self, count: int) -> int:
+    def kick(self, count: int=1) -> _a_int:
         return self.execute('kick', count)
 
-    def kick_job(self, id: int) -> _job_type:
+    def kick_job(self, id: int) -> _a_job:
         return self.execute('kick-job', id)
 
-    def stats_job(self, id: int) -> dict:
+    def stats_job(self, id: int) -> _a_dict:
         return self.execute('stats-job', id)
 
-    def stats_tube(self, tube: str) -> dict:
+    def stats_tube(self, tube: str) -> _a_dict:
         return self.execute('stats-tube', tube)
 
-    def stats(self) -> dict:
+    def stats(self) -> _a_dict:
         return self.execute('stats')
 
-    def tubes(self) -> typing.List[str]:
+    def tubes(self) -> _a_list_str:
         return self.execute('list-tubes')
 
-    def used(self) -> str:
+    def used(self) -> _a_str:
         return self.execute('list-tube-used')
 
-    def watched(self) -> typing.List[str]:
+    def watched(self) -> _a_list_str:
         return self.execute('list-tubes-watched')
 
     def pause_tube(self, tube: str) -> None:
@@ -225,6 +222,11 @@ def handle_response(command, status, headers, body):
     if status == expected_ok:
         return parse(headers, body)
     elif status in expected_errors:
+        # special cases
+        if command.startswith('peek') and status == b'NOT_FOUND':
+            return None
+        if command == 'reserve-with-timeout' and status == b'TIMED_OUT':
+            return None
         raise CommandFailed(status.decode())
     else:
         raise UnexpectedResponse(status.decode())
