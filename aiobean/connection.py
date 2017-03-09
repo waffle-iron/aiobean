@@ -31,21 +31,25 @@ class Connection(CommandsMixin):
         self._queue = deque()
         self._read_task = asyncio.ensure_future(
             self._read_loop(), loop=loop)
-        self._closed = False
-        self._closing = False
+        self._close_task = None
         logger.info('connection open')
 
     @property
     def closed(self):
-        return self._closing or self._closed
+        # read_task may not have a chance to check eof while it's blocking on
+        # a read
+        if not self._close_task and self._reader.at_eof():
+            self._close(ConnectionLost)
+        return bool(self._close_task)
 
     def close(self):
         return self._close()
 
     def _close(self, exc=None):
-        if not self.closed:
-            self._closing = True
-            return asyncio.ensure_future(self._do_close(exc), loop=self._loop)
+        if not self._close_task:
+            self._close_task = asyncio.ensure_future(
+                self._do_close(exc), loop=self._loop)
+        return self._close_task
 
     async def _do_close(self, exc):
         logger.info('closing connection..')
@@ -59,9 +63,6 @@ class Connection(CommandsMixin):
                 waiter.cancel()
             else:
                 waiter.set_exception(exc)
-
-        self._closing = False
-        self._closed = True
 
     def execute(self, command, *args, body=None):
         if self.closed:
