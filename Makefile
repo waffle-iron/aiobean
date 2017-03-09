@@ -1,20 +1,35 @@
-clean:
-	-rm -r aiobean.egg-info
+.PHONY: clean clean-build clean-test clean-pyc
+clean: clean-build clean-test clean-pyc
 
-aiobean.egg-info:
+clean-pyc:
+	find . -name '*.pyc' -exec rm -f {} +
+	find . -name '*.pyo' -exec rm -f {} +
+	find . -name '*~' -exec rm -f {} +
+	find . -name '__pycache__' -exec rm -fr {} +
+
+clean-build:
+	rm -fr aiobean.egg-info
+
+clean-test:
+	rm -f .coverage
+	rm -fr htmlcov
+
+install aiobean.egg-info: clean
 	pip install -Ue .[yml]
 
-devel:
-	pip install -U pip
-	pip install -r requirements-dev.txt
+install-dev: aiobean.egg-info
+	pip install -r requirements/dev.txt
+
+install-test: aiobean.egg-info
+	pip install -r requirements/test.txt
+
+lint:
+	flake8 aiobean tests
 
 test:
 	pytest
 
-cov coverage:
-	pytest --cov --cov-report=term --cov-report=html
+cov:
+	pytest --cov-report=term --cov-report=html
 	@echo "open htmlcov/index.html to view coverage report in html"
-
-testing:
-	ptw
 
