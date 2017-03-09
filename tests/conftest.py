@@ -2,6 +2,8 @@ import pytest
 from subprocess import Popen
 import time
 
+from aiobean.log import logger
+
 
 class Server:
 
@@ -19,16 +21,22 @@ class Server:
 
     def start(self):
         self._process = Popen(['beanstalkd', '-p', str(self._port)])
+        logger.debug('%s started', self)
 
     def terminate(self):
         if self._process:
             self._process.terminate()
             self._process = None
+            logger.debug('%s terminated', self)
 
     def kill(self):
         if self._process:
             self._process.kill()
             self._process = None
+            logger.debug('%s killed', self)
+
+    def __str__(self):
+        return 'server:{}'.format(self._port)
 
 
 @pytest.fixture
