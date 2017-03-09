@@ -1,5 +1,5 @@
 import asyncio
-from aiobean.connection import create_connection, ConnectionLost
+from aiobean.connection import create_connection
 import pytest
 
 
@@ -31,10 +31,10 @@ async def test_client_close(conn_factory):
     async with conn_factory() as conn:
         assert not conn.closed
         stats_task = conn.stats()
-        await conn.close()
+        conn.close()
+        await conn.wait_closed()
         with pytest.raises(asyncio.CancelledError):
-            assert stats_task.result()
-    await asyncio.sleep(0)
+            await stats_task
     assert conn.closed
     assert conn._read_task.cancelled()
     assert not conn._queue
@@ -48,7 +48,8 @@ async def test_server_close(conn_factory, server, close_method):
     async with conn_factory() as conn:
         getattr(server, close_method)()
         stats_task = conn.stats()
-        with pytest.raises(ConnectionLost):
+        await conn.wait_closed()
+        with pytest.raises(asyncio.CancelledError):
             await stats_task
         assert conn.closed
 
