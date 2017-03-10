@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import CancelledError, IncompleteReadError
 from collections import deque
 from aiobean.exc import BeanstalkException
 from aiobean.log import logger
@@ -7,7 +8,7 @@ from aiobean.protocol import (
 )
 
 
-class ConnectionClosed(BeanstalkException):
+class ConnectionClosedError(BeanstalkException):
     pass
 
 
@@ -28,6 +29,8 @@ class Connection(CommandsMixin):
         self._close_waiter = loop.create_future()
         self._read_task = asyncio.ensure_future(
             self._read_loop(), loop=loop)
+        # wether read_task is done or cancelled, close_waiter is always done
+        # once read_task is finished
         self._read_task.add_done_callback(self._close_waiter.set_result)
 
         self._closing = False  # marks _do_close is running in a coro
@@ -54,7 +57,7 @@ class Connection(CommandsMixin):
         self._read_task.cancel()
         self._reader = None
         self._writer = None
-        self._closing = True
+        self._closing = False
         self._closed = True
         while self._queue:
             command, waiter = self._queue.popleft()
@@ -69,7 +72,7 @@ class Connection(CommandsMixin):
 
     def execute(self, command, *args, body=None):
         if self.closed:
-            raise ConnectionClosed(
+            raise ConnectionClosedError(
                 'cannot execute command because the connection is closed')
         waiter = self._loop.create_future()
         self._queue.append((command, waiter))
@@ -79,31 +82,30 @@ class Connection(CommandsMixin):
         return waiter
 
     async def _read_loop(self):
-        while not self._reader.at_eof():
-            try:
+        exc = None
+        try:
+            while not self._reader.at_eof():
                 head = await self._reader.readline()
                 logger.debug('read: head %s', head)
-            except asyncio.CancelledError:
-                break
-            if self._reader.at_eof():
-                break
-            status, headers, body_len = handle_head(head)
-            if body_len:
-                try:
+                if head == b'' or self._reader.at_eof():
+                    break
+                status, headers, body_len = handle_head(head)
+                if body_len:
                     body = await self._reader.readexactly(body_len)
                     await self._reader.readexactly(2)  # crlf
                     logger.debug('read: body %s', body[:30])
-                except asyncio.IncompleteReadError as e:
-                    break
-            else:
-                body = None
-            # handler response
-            try:
-                command, waiter = self._queue.popleft()
-                result = handle_response(command, status, headers, body)
-            except Exception as e:
-                waiter.set_exception(e)
-            else:
-                waiter.set_result(result)
+                else:
+                    body = None
+                # handler response
+                try:
+                    command, waiter = self._queue.popleft()
+                    result = handle_response(command, status, headers, body)
+                except Exception as e:
+                    waiter.set_exception(e)
+                else:
+                    waiter.set_result(result)
+        except Exception as e:
+            if not isinstance(e, (CancelledError, IncompleteReadError)):
+                exc = e
         self._closing = True
-        self._do_close()
+        self._do_close(exc)

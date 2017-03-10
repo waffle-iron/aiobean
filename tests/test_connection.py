@@ -1,5 +1,5 @@
 import asyncio
-from aiobean.connection import create_connection
+from aiobean.connection import create_connection, ConnectionClosedError
 from aiobean.protocol import DeadlineSoon
 import pytest
 
@@ -49,7 +49,7 @@ async def test_server_close(conn_factory, server, close_method):
         getattr(server, close_method)()
         stats_task = conn.stats()
         await conn.wait_closed()
-        with pytest.raises(asyncio.CancelledError):
+        with pytest.raises((asyncio.CancelledError, ConnectionResetError)):
             await stats_task
         assert conn.closed
 
@@ -59,6 +59,10 @@ async def test_execute(conn_factory):
         fut = conn.execute('put', 10, 0, 10, 2, body=b'hi')
         jid = await fut
         assert isinstance(jid, int)
+        # should not be able to execute if connection is closed/closing
+        conn.close()
+        with pytest.raises(ConnectionClosedError):
+            conn.execute('stats')
 
 
 async def test_delete(conn_factory):
