@@ -1,5 +1,6 @@
 import asyncio
-from aiobean.connection import create_connection, ConnectionLost
+from aiobean.connection import create_connection, ConnectionClosedError
+from aiobean.protocol import DeadlineSoon
 import pytest
 
 
@@ -20,9 +21,8 @@ def conn_factory(server, event_loop):
             return self._conn
 
         async def __aexit__(self, exc_type, exc, tb):
-            closing = self._conn.close()
-            if closing:
-                await closing
+            self._conn.close()
+            await self._conn.wait_closed()
 
     return ConnContext
 
@@ -31,10 +31,10 @@ async def test_client_close(conn_factory):
     async with conn_factory() as conn:
         assert not conn.closed
         stats_task = conn.stats()
-        await conn.close()
+        conn.close()
+        await conn.wait_closed()
         with pytest.raises(asyncio.CancelledError):
-            assert stats_task.result()
-    await asyncio.sleep(0)
+            await stats_task
     assert conn.closed
     assert conn._read_task.cancelled()
     assert not conn._queue
@@ -48,7 +48,8 @@ async def test_server_close(conn_factory, server, close_method):
     async with conn_factory() as conn:
         getattr(server, close_method)()
         stats_task = conn.stats()
-        with pytest.raises(ConnectionLost):
+        await conn.wait_closed()
+        with pytest.raises((asyncio.CancelledError, ConnectionResetError)):
             await stats_task
         assert conn.closed
 
@@ -58,6 +59,10 @@ async def test_execute(conn_factory):
         fut = conn.execute('put', 10, 0, 10, 2, body=b'hi')
         jid = await fut
         assert isinstance(jid, int)
+        # should not be able to execute if connection is closed/closing
+        conn.close()
+        with pytest.raises(ConnectionClosedError):
+            conn.execute('stats')
 
 
 async def test_delete(conn_factory):
@@ -102,6 +107,8 @@ async def test_worker(conn_factory):
             tube = 'test-tube'
             await producer.use(tube)
             jid = await producer.put(b'test')
+            # can list all tubes
+            assert await producer.tubes() == ['default', tube]
 
             # nothing is ready in the default tube
             assert not await worker.reserve(0.1)
@@ -110,9 +117,14 @@ async def test_worker(conn_factory):
             await worker.watch(tube)
             assert await worker.watched() == ['default', tube]
 
-            # can reserve and release
+            # can reserve, touch and release
             assert await worker.reserve() == (jid, b'test')
+            await worker.touch(jid)
             await worker.release(jid)
+
+            # can get stats of a job
+            job_stats = await worker.stats_job(jid)
+            assert job_stats['id'] == jid
 
             # delete when finished
             assert await worker.reserve() == (jid, b'test')
@@ -134,3 +146,30 @@ async def test_worker(conn_factory):
             await worker.bury(jid)
             await worker.kick_job(jid)
             assert await worker.reserve() == (jid, b'bury2')
+
+            # can pause tube
+            await worker.pause_tube(tube, 1)
+            # can ignore tube
+            await worker.ignore(tube)
+            assert await worker.watched() == ['default']
+
+
+async def test_deadline_soon(conn_factory):
+    async with conn_factory() as conn:
+        await conn.put(b'test', ttr=1)
+        await conn.reserve()
+        # during the TTR of a reserved job, the last second is kept by the
+        # server as a safety margin. If the client issues a reserve during
+        # this margin, it is told that the dealine of a previous job is soon
+        with pytest.raises(DeadlineSoon):
+            await conn.reserve()
+
+
+async def test_stats(conn_factory):
+    async with conn_factory() as conn:
+        # can get server stats
+        server_stats = await conn.stats()
+        assert 'version' in server_stats
+        # can get tube status
+        tube_stats = await conn.stats_tube()
+        assert tube_stats['name'] == 'default'
