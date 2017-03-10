@@ -46,6 +46,10 @@ class CommandFailed(ProtocolException):
     pass
 
 
+class DeadlineSoon(CommandFailed):
+    pass
+
+
 class UnexpectedResponse(ProtocolException):
     pass
 
@@ -228,6 +232,8 @@ def handle_response(command, status, headers, body):
             return None
         if command == 'reserve-with-timeout' and status == b'TIMED_OUT':
             return None
+        if command.startswith('reserve') and status == b'DEADLINE_SOON':
+            raise DeadlineSoon
         raise CommandFailed(status.decode())
     else:
         raise UnexpectedResponse(status.decode())

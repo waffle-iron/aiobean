@@ -1,5 +1,6 @@
 import asyncio
 from aiobean.connection import create_connection
+from aiobean.protocol import DeadlineSoon
 import pytest
 
 
@@ -147,6 +148,17 @@ async def test_worker(conn_factory):
             # can ignore tube
             await worker.ignore(tube)
             assert await worker.watched() == ['default']
+
+
+async def test_deadline_soon(conn_factory):
+    async with conn_factory() as conn:
+        await conn.put(b'test', ttr=1)
+        await conn.reserve()
+        # during the TTR of a reserved job, the last second is kept by the
+        # server as a safety margin. If the client issues a reserve during
+        # this margin, it is told that the dealine of a previous job is soon
+        with pytest.raises(DeadlineSoon):
+            await conn.reserve()
 
 
 async def test_stats(conn_factory):
