@@ -27,12 +27,12 @@ lint:
 	flake8 aiobean tests
 
 test .coverage:
-	pytest --cov=aiobean --cov-report= tests
+	pytest
 
 cov: .coverage
 	@coverage report --skip-covered
 
-cov-html htmlcov: .coverage
+htmlcov: .coverage
 	@coverage html
 	@echo "open htmlcov/index.html"
 

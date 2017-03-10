@@ -80,6 +80,7 @@ _a_str = typing.Awaitable[str]
 _a_job = typing.Awaitable[typing.Tuple[int, bytes]]
 _a_dict = typing.Awaitable[dict]
 _a_list_str = typing.Awaitable[typing.List[str]]
+_a_none = typing.Awaitable[None]
 
 
 class CommandsMixin:
@@ -102,13 +103,13 @@ class CommandsMixin:
     def delete(self, id: int) -> None:
         return self.execute('delete', id)
 
-    def release(self, id: int, pri: int=DEFAULT_PRI, delay: int=0) -> None:
+    def release(self, id: int, pri: int=DEFAULT_PRI, delay: int=0) -> _a_none:
         return self.execute('release', id, pri, delay)
 
-    def bury(self, id: int, pri: int=DEFAULT_PRI) -> None:
+    def bury(self, id: int, pri: int=DEFAULT_PRI) -> _a_none:
         return self.execute('bury', id, pri)
 
-    def touch(self, id: int) -> None:
+    def touch(self, id: int) -> _a_none:
         return self.execute('touch', id)
 
     def watch(self, tube: str) -> _a_int:
@@ -138,7 +139,7 @@ class CommandsMixin:
     def stats_job(self, id: int) -> _a_dict:
         return self.execute('stats-job', id)
 
-    def stats_tube(self, tube: str) -> _a_dict:
+    def stats_tube(self, tube: str='default') -> _a_dict:
         return self.execute('stats-tube', tube)
 
     def stats(self) -> _a_dict:
@@ -153,8 +154,8 @@ class CommandsMixin:
     def watched(self) -> _a_list_str:
         return self.execute('list-tubes-watched')
 
-    def pause_tube(self, tube: str) -> None:
-        return self.execute('pause-tube')
+    def pause_tube(self, tube: str, delay: int) -> _a_none:
+        return self.execute('pause-tube', tube, delay)
 
 
 PROTOCOL = {
@@ -173,7 +174,7 @@ PROTOCOL = {
     'bury': (b'BURIED', {b'NOT_FOUND'}, _parse_empty),
     'touch': (b'TOUCHED', {b'NOT_FOUND'}, _parse_empty),
     'watch': (b'WATCHING', _EMPTY, _parse_int),
-    'ignore': (b'WATCHING', {b'NOT_IGNORED', _parse_int}),
+    'ignore': (b'WATCHING', {b'NOT_IGNORED'}, _parse_int),
     'peek': (b'FOUND', {b'NOT_FOUND'}, _parse_body),
     'kick': (b'KICKED', _EMPTY, _parse_int),
     'kick-job': (b'KICKED', {b'NOT_FOUND'}, _parse_empty),

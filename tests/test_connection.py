@@ -20,9 +20,8 @@ def conn_factory(server, event_loop):
             return self._conn
 
         async def __aexit__(self, exc_type, exc, tb):
-            closing = self._conn.close()
-            if closing:
-                await closing
+            self._conn.close()
+            await self._conn.wait_closed()
 
     return ConnContext
 
@@ -103,6 +102,8 @@ async def test_worker(conn_factory):
             tube = 'test-tube'
             await producer.use(tube)
             jid = await producer.put(b'test')
+            # can list all tubes
+            assert await producer.tubes() == ['default', tube]
 
             # nothing is ready in the default tube
             assert not await worker.reserve(0.1)
@@ -111,9 +112,14 @@ async def test_worker(conn_factory):
             await worker.watch(tube)
             assert await worker.watched() == ['default', tube]
 
-            # can reserve and release
+            # can reserve, touch and release
             assert await worker.reserve() == (jid, b'test')
+            await worker.touch(jid)
             await worker.release(jid)
+
+            # can get stats of a job
+            job_stats = await worker.stats_job(jid)
+            assert job_stats['id'] == jid
 
             # delete when finished
             assert await worker.reserve() == (jid, b'test')
@@ -135,3 +141,19 @@ async def test_worker(conn_factory):
             await worker.bury(jid)
             await worker.kick_job(jid)
             assert await worker.reserve() == (jid, b'bury2')
+
+            # can pause tube
+            await worker.pause_tube(tube, 1)
+            # can ignore tube
+            await worker.ignore(tube)
+            assert await worker.watched() == ['default']
+
+
+async def test_stats(conn_factory):
+    async with conn_factory() as conn:
+        # can get server stats
+        server_stats = await conn.stats()
+        assert 'version' in server_stats
+        # can get tube status
+        tube_stats = await conn.stats_tube()
+        assert tube_stats['name'] == 'default'
