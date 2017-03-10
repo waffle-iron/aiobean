@@ -1,3 +1,6 @@
+.. image:: https://badge.waffle.io/blurrcat/aiobean.png?label=ready&title=Ready 
+ :target: https://waffle.io/blurrcat/aiobean
+ :alt: 'Stories in Ready'
 ===============================
 aiobean
 ===============================
