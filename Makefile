@@ -26,10 +26,13 @@ install-test: aiobean.egg-info
 lint:
 	flake8 aiobean tests
 
-test:
-	pytest
+test .coverage:
+	pytest --cov=aiobean --cov-report= tests
 
-cov:
-	pytest --cov-report=term --cov-report=html
-	@echo "open htmlcov/index.html to view coverage report in html"
+cov: .coverage
+	@coverage report --skip-covered
+
+cov-html htmlcov: .coverage
+	@coverage html
+	@echo "open htmlcov/index.html"
 
